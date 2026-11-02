@@ -207,7 +207,7 @@ let viewCell=null;   // 선택한 작성일 칸 (null이면 최신 데이터 기
 function weekInfo(){
   const last=data.reduce((m,r)=>r.d>m?r.d:m,"0000-00-00");
   const sh=(x,n)=>{const e=new Date(x);e.setUTCDate(e.getUTCDate()+n);return iso(e)};
-  const newest= !viewCell || (typeof newestCell==="function" && viewCell===newestCell());
+  const newest= !viewCell;
   // 금주(week of): 최신 칸이면 데이터가 있는 마지막 주(월요일 기준, 예: 10/19~), 지난 칸이면 그 칸이 다룬 시세 주(금요일 f)
   const monday= newest ? mondayOf(last) : sh(T(friOf(viewCell)),-4);
   const fri= sh(T(monday),4);                        // 금주 금요일 (미래일 수 있음)
@@ -436,7 +436,16 @@ function drawChart(s){
 // 새 월요일이 되면 그날 날짜 칸이 자동으로 생기고, 초안은 그 칸에만 들어감 (지난 칸은 건드리지 않음).
 let selWeek=null;
 const KM={Silver:"s",Aluminium:"a",Copper:"c"};
-function reasonStore(){return JSON.parse(localStorage.getItem(RKEY+".byDate")||"{}")}
+// 이전 10/20 저장 내용은 10/23 칸에서 이어서 사용한다. 원본 저장 데이터는 유지한다.
+function datedStore(suffix){
+  const store=JSON.parse(localStorage.getItem(RKEY+suffix)||"{}");
+  if(Object.prototype.hasOwnProperty.call(store,"2026-10-20")){
+    if(!Object.prototype.hasOwnProperty.call(store,"2026-10-23")) store["2026-10-23"]=store["2026-10-20"];
+    delete store["2026-10-20"];
+  }
+  return store;
+}
+function reasonStore(){return datedStore(".byDate")}
 const todayStr=()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`};
 // 작성일 -> 그 글이 다루는 시세 주의 금요일
 function friOf(w){
@@ -455,10 +464,10 @@ function weekList(){
 function weekLabel(w){const f=friOf(w), m=T(f);m.setUTCDate(m.getUTCDate()-4);return `${md(iso(m))}~${md(f)}`}
 function origOf(w){return (window.COMMENTS||[]).find(x=>x.w===w)}
 // 확정(잠금) 상태: 엑셀 원본 칸은 기본 확정, 직접 쓴/초안 칸은 '확정' 누르기 전까지 수정 가능
-function lockStore(){return JSON.parse(localStorage.getItem(RKEY+".locks")||"{}")}
+function lockStore(){return datedStore(".locks")}
 function isLocked(w){const L=lockStore(); if(w in L) return !!L[w]; const o=origOf(w); return !!(o&&o.sheet!=="(웹 작성)")}   // 기본: 엑셀 시트 원본이면 확정 / 웹에서 작성한 칸은 작성 중
 function setLock(w,v){const L=lockStore(); L[w]=v; localStorage.setItem(RKEY+".locks",JSON.stringify(L))}
-function draftStore(){return JSON.parse(localStorage.getItem(RKEY+".drafts")||"{}")}
+function draftStore(){return datedStore(".drafts")}
 function confirmWeek(){
   if(!confirm(`${selWeek} 칸의 변동 사유를 확정할까요? 확정하면 수정할 수 없습니다. ('수정' 버튼으로 다시 풀 수 있습니다)`)) return;
   setLock(selWeek,true); renderReason();
@@ -573,6 +582,7 @@ window.addEventListener("beforeunload",e=>{   // 마지막 저장/불러오기 �
 });
 
 
+selWeek=weekList()[0];viewCell=selWeek;
 render();renderReason();renderNews();
 </script>
 </body>
