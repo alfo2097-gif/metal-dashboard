@@ -1,0 +1,61 @@
+name: Update metal dashboard
+
+on:
+  schedule:
+    # Monday 09:00 Asia/Seoul (UTC+9). GitHub may delay scheduled jobs.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metal-dashboard-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline collector tests
+        shell: powershell
+        run: ./metal/tests/fetch-lme.test.ps1
+      - name: Collect and validate public feeds
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./metal/fetch_lme.ps1
+          if (-not $?) { throw 'Collection failed; existing site is unchanged.' }
+          ./metal/build_pages.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-metal-site
+          path: pages_dist/
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: validated-metal-site
+          path: pages_dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages_dist
+      - name: Deploy validated site
+        id: deployment
+        uses: actions/deploy-pages@v4
