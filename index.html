@@ -103,26 +103,7 @@
 <div class="wrapx">
 <div class="syncbar">
   <span id="syncstat" class="syncs" role="status" aria-live="polite"></span>
-  <button id="conflictBtn" hidden onclick="refreshShared()">새 저장본 확인</button>
   <button id="publishBtn" disabled onclick="publishInputs()" title="저장하면 링크를 가진 모든 사람에게 반영됩니다">저장</button>
-  <details class="sync-tools">
-    <summary>더보기</summary>
-    <div class="sync-menu">
-      <div class="sync-actions">
-        <button onclick="refreshShared()">최신 내용 불러오기</button>
-        <button id="newReportBtn" disabled onclick="addReport()">작성일 추가</button>
-        <button onclick="saveInputs()">백업 다운로드</button>
-        <button id="importBtn" disabled onclick="loadInputs()">백업 가져오기</button>
-        <button id="restoreBtn" disabled onclick="restoreWork()">작업본 복원</button>
-        <button onclick="downloadWork()">보존 작업본 백업</button>
-        <button onclick="exportLegacy()">기존 개인값 백업</button>
-        <button id="localBtn" onclick="enterLocal()">로컬 전용</button>
-        <button id="cloudBtn" hidden onclick="returnShared()">공용 보기로</button>
-      </div>
-      <p class="note" id="sharedMeta">공유 연결 확인 중</p>
-      <p class="note">누구나 수정할 수 있습니다. 저장 전에는 내 작업본이며, 저장하면 다른 사람 화면에도 반영됩니다. 개인 가안은 공유되지 않습니다.</p>
-    </div>
-  </details>
   <input type="file" id="inFile" accept=".json,application/json" hidden>
 </div>
 <div class="main"><div class="left panel">
@@ -499,7 +480,7 @@ function renderReason(){
   if(viewCell&&!wl.includes(viewCell))viewCell=null;
   if(!viewCell)selWeek=newestCell()||wl[0];
   else selWeek=viewCell;
-  if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다. 더보기에서 작성일을 추가하세요.";document.getElementById("reason").innerHTML="";document.getElementById("btnConfirm").style.display="none";document.getElementById("btnEdit").style.display="none";return;}
+  if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다.";document.getElementById("reason").innerHTML="";document.getElementById("btnConfirm").style.display="none";document.getElementById("btnEdit").style.display="none";return;}
   const store=reasonStore(), orig=origOf(selWeek), sv=store[selWeek], locked=isLocked(selWeek),editable=canEdit()&&!locked;
   document.getElementById("wsel").innerHTML=`<button class="${!viewCell?"on":""}" onclick="viewCell=null;renderReason();render()" title="최신 수집 시세와 최근 작성한 사유">최신 시세</button>`+wl.map(w=>{
     const mark=isLocked(w)?"":"✎ ";
@@ -584,23 +565,25 @@ document.getElementById("inFile").addEventListener("change",async e=>{
 function syncMsg(t,cls){const e=document.getElementById("syncstat");e.textContent=t;e.className="syncs "+(cls||"");}
 function syncStatus(s){
   syncMsg(s.message,s.online&&!s.dirty?"ok":"warn");
-  document.getElementById("publishBtn").disabled=!s.online||!s.loaded||s.busy||s.local||s.pending;
+  document.getElementById("publishBtn").disabled=!s.online||!s.loaded||s.busy||s.local;
   document.getElementById("publishBtn").textContent=s.busy?"저장 중…":"저장";
-  document.getElementById("conflictBtn").hidden=!s.pending;
-  document.getElementById("importBtn").disabled=!s.canEdit;
-  document.getElementById("restoreBtn").disabled=!s.canEdit;
-  document.getElementById("newReportBtn").disabled=!s.canEdit;
-  document.getElementById("localBtn").hidden=s.local;
-  document.getElementById("cloudBtn").hidden=!s.local;
+  document.getElementById("syncstat").hidden=s.online&&!s.dirty&&!s.pending&&!s.busy;
+  document.getElementById("publishBtn").title=s.pending?"다른 사람이 먼저 저장했습니다. 눌러서 내 작업본을 보존하고 최신 내용을 확인하세요.":s.message;
   document.querySelectorAll(".nadd input,.nadd select,.nadd button").forEach(e=>e.disabled=!s.canEdit);
   document.querySelectorAll(".sin").forEach(e=>e.readOnly=!s.canEdit);
   if(!s.canEdit)document.querySelectorAll("[contenteditable]").forEach(e=>e.contentEditable="false");
-  document.getElementById("sharedMeta").textContent=`${s.local?"로컬 전용 · 공유 안 됨":s.timestamp?"마지막 공유 "+new Date(s.timestamp).toLocaleString("ko-KR")+" · 버전 "+s.revision:"아직 공용 저장본 없음"} · ${s.local?"공유 꺼짐":!s.configured?"공유 설정 필요":s.live?"실시간 연결됨":"30초 간격 확인 (실시간 연결 대기)"} · 자동 수집 시세는 별도 파일 배포가 필요합니다.`;
+  if(s.pending)syncMsg("다른 사람이 먼저 저장했습니다. 저장 버튼을 눌러 작업본 보존 후 확인하세요.","warn");
 }
 function renderShared(){
   silver=shared.view().silver;data=mergeData();renderReason();render();renderNews();syncStatus(shared.state());
 }
 async function publishInputs(){
+  if(shared.state().pending){
+    if(confirm("다른 사람이 먼저 저장했습니다. 내 작업본을 파일로 보존하고 최신 내용을 불러올까요?\n최신 내용을 확인한 뒤 필요한 문장만 다시 붙여넣어 주세요.")){
+      saveInputs();await shared.reload();
+    }
+    return;
+  }
   if(!confirm("현재 변동 사유·은 시세·확정 상태·직접 추가 뉴스를 링크를 가진 모든 사람에게 공유할까요? 개인 가안은 제외됩니다."))return;
   try{await shared.publish();}catch(e){alert(e.message);}
 }
