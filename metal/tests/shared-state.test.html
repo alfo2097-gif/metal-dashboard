@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>공동 편집 로컬 테스트</title>
+<h1>공동 편집 모의 서버 테스트</h1><p>실제 Supabase 연결/SQL 권한 검증과는 별개입니다.</p><pre id="results">실행 중…</pre>
+<script src="../shared-store.js"></script><script src="../comments.js"></script><script src="../silver_mi.js"></script>
+<script>
+(async()=>{
+ const lines=[],stores=[];let count=0;
+ const assert=(ok,name)=>{if(!ok)throw new Error(name);lines.push('PASS '+name);count++;};
+ const clone=x=>JSON.parse(JSON.stringify(x));
+ const mem=()=>{const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)};};
+ const seed=MetalShared.fromFiles(window.COMMENTS,window.SILVER_MI);
+ const cfg={url:'https://mock.supabase.co',publishableKey:'sb_publishable_test'};
+ const db={row:null,fail:false,listeners:[],writes:[]};
+ function client(){return {
+   from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>db.fail?{error:{message:'offline'}}:{data:clone(db.row)}})})}),
+   rpc:async(name,args)=>{
+     if(db.fail)return {error:{message:'offline'}};
+     if(args.p_expected_revision!==(db.row?db.row.revision:0))return {error:{code:'40001'}};
+     db.writes.push(clone(args.p_payload));db.row={revision:(db.row?db.row.revision:0)+1,payload:MetalShared.validate(args.p_payload),updated_at:new Date().toISOString()};
+     return {data:[clone(db.row)]};
+   },
+   channel:()=>{const ch={on:(event,filter,fn)=>{db.listeners.push(fn);return ch;},subscribe:()=>ch};return ch;},removeChannel:()=>{}
+ };}
+ function make(storage){const s=MetalShared.create({seed,config:cfg,storage:storage||mem(),client:client()});stores.push(s);return s;}
+ try{
+   assert(seed.latest==='2026-10-30'&&seed.reports['2026-10-23'],'원본 10/23·10/30 파싱 및 초기화');
+   assert(!MetalShared.safeUrl('javascript:alert(1)')&&!MetalShared.safeUrl('https://example.com/\\x'),'위험 뉴스 URL 거부');
+   const bad=clone(seed);bad.drafts={};let rejected=false;try{MetalShared.validate(bad);}catch(e){rejected=true;}assert(rejected,'공개 payload에 가안 필드 거부');
+   const storage=mem();storage.setItem('metalSilver.v1','{"2026-10-30":99999}');
+   const a=make(storage),b=make();await a.init();await b.init();assert(a.state().canEdit&&b.state().canEdit,'로그인 없이 편집 가능');
+   assert(a.view().silver['2026-10-30']!==99999,'옛 localStorage 값 자동 혼입 방지');
+   a.change(p=>{p.reports['2026-10-30'].c='공유 테스트';p.silver['2026-10-30']=50;});
+   a.saveDrafts({'2026-10-30':{Copper:'개인 초안'}});await a.publish();await b.refresh();
+   assert(b.view().reports['2026-10-30'].c==='공유 테스트'&&b.view().silver['2026-10-30']===50,'다른 브라우저에 저장 내용 전파');
+   assert(!JSON.stringify(db.writes).includes('개인 초안'),'개인 가안이 서버로 전달되지 않음');
+   a.change(p=>p.reports['2026-10-30'].s='A');b.change(p=>p.reports['2026-10-30'].s='B');await a.publish();
+   let collision=false;try{await b.publish();}catch(e){collision=true;}
+   assert(collision&&b.state().dirty&&b.view().reports['2026-10-30'].s==='B','동시 저장 충돌·내 작업본 보존');
+   await b.refresh();assert(b.view().reports['2026-10-30'].s==='B'&&b.state().pending,'실시간 수신도 입력중인 내용 보존');
+   await b.reload();assert(b.view().reports['2026-10-30'].s==='A'&&b.storedWork().payload.reports['2026-10-30'].s==='B','최신본 로드 후 충돌 작업 백업 유지');
+   a.change(p=>delete p.silver['2026-10-30']);await a.publish();await b.refresh();assert(!('2026-10-30' in b.view().silver),'삭제된 항목 되살리지 않음');
+   b.change(p=>p.reports['2026-10-30'].c='오프라인 작업');db.fail=true;let failed=false;try{await b.publish();}catch(e){failed=true;}
+   assert(failed&&b.state().dirty&&!b.state().online&&b.storedWork(),'네트워크 실패를 성공 처리하지 않고 작업본 유지');db.fail=false;
+   const c=make(storage);await c.init();assert(c.state().canEdit,'캐시와 서버 revision이 같아도 편집 가능');
+   const file=clone(seed);file.silver['2026-10-30']=-1;rejected=false;try{MetalShared.validate(file);}catch(e){rejected=true;}assert(rejected,'음수 시세 거부');
+   const oldRevision=db.row.revision;a.change(p=>p.reports['2026-10-30'].c='알림 업데이트');await a.publish();
+   await Promise.all(db.listeners.map(fn=>fn()));assert(c.state().revision>oldRevision&&c.view().reports['2026-10-30'].c==='알림 업데이트','Realtime 콜백으로 재조회');
+   const unconfigured=MetalShared.create({seed,config:{},storage:mem()});stores.push(unconfigured);await unconfigured.init();assert(!unconfigured.state().canEdit&&!unconfigured.state().online,'미설정 상태를 공유 가능으로 표시하지 않음');
+   unconfigured.useLocal();assert(unconfigured.state().canEdit&&unconfigured.state().local,'명시적 로컬 전용 모드');
+   lines.push('\n'+count+' tests passed');document.title='PASS '+count+' tests';
+ }catch(e){lines.push('FAIL '+e.stack);document.title='FAIL';}
+ finally{stores.forEach(s=>s.stop());document.getElementById('results').textContent=lines.join('\n');}
+})();
+</script>
