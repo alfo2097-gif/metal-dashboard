@@ -93,12 +93,22 @@
 <div class="top"><h1>주요 <em>Metal</em> 시황 대시보드</h1><div class="asof">기준일 <b id="asof"></b></div></div>
 <div class="wrapx">
 <div class="syncbar">
-  <span class="syncl">공유 파일</span>
-  <button onclick="loadInputs()">불러오기</button>
-  <button onclick="saveInputs()">저장하기</button>
+  <span class="syncl">공용 입력</span>
+  <button id="publishBtn" disabled onclick="publishInputs()">공유 저장</button>
+  <button onclick="refreshShared()">최신 내용 불러오기</button>
+  <button onclick="saveInputs()">백업 다운로드</button>
+  <button onclick="exportLegacy()">기존 개인값 백업</button>
+  <button id="importBtn" disabled onclick="loadInputs()">백업 가져오기</button>
+  <button id="restoreBtn" disabled onclick="restoreWork()">작업본 복원</button>
+  <button id="newReportBtn" disabled onclick="addReport()">작성일 추가</button>
+  <button onclick="downloadWork()">보존 작업본 백업</button>
+  <button id="localBtn" onclick="enterLocal()">로컬 전용</button>
+  <button id="cloudBtn" hidden onclick="returnShared()">공용 보기로</button>
   <input type="file" id="inFile" accept=".json,application/json" style="display:none">
   <span id="syncstat" class="syncs"></span>
 </div>
+<p class="note" id="sharedMeta">공유 연결 확인 중 · 자동 수집 시세는 별도 파일 배포가 필요합니다.</p>
+<p class="note">공개 공동 편집: 링크를 가진 누구나 수정·공유 저장할 수 있습니다. 저장 전에는 내 작업본이며, 저장 후 다른 화면에 자동 반영됩니다.</p>
 <div class="main"><div class="left panel">
 <h2>주요 Metal 시세</h2>
 <div class="meta">단위: Silver $/toz, Aluminium·Copper $/톤 ｜ 출처: Al·Cu 한국비철금속협회 LME 현물 / Silver MI 시황 (<span style="color:#e5384f">*</span> = Yahoo 선물 종가 임시값)</div>
@@ -161,8 +171,9 @@
 <script src="silver_mi.js"></script>
 <script src="news.js"></script>
 <script src="stock.js"></script>
-<script src="comments.js?v=20261030-2"></script>
-<script src="draft.js?v=20261030-2"></script>
+<script src="comments.js"></script>
+<script src="shared-config.js"></script>
+<script src="shared-store.js"></script>
 <script>
 const KEY="metalData.v1", RKEY="metalReason.v1";
 const METALS=[["Silver ($/toz)","s",2],["Aluminium ($/톤)","a",0],["Copper ($/톤)","c",0]];
@@ -185,11 +196,12 @@ function sampleData(){
 }
 // ---- 데이터 로드: data.js(LME 구리·알루미늄 자동수집) + 은(붙여넣기 저장분) ----
 const SKEY="metalSilver.v1";
-let silver=JSON.parse(localStorage.getItem(SKEY)||"{}");   // {날짜:가격}
+let shared=null;
+let silver={};   // 공용 저장본을 사용. 기존 localStorage는 백업 가져오기에서만 읽는다.
 function mergeData(){
   if(!window.LME_DATA) return sampleData();
   // 은 우선순위: 직접 입력값(silver) > 엑셀 MI 값(SILVER_MI) > Yahoo 임시값(y).  sp=true 일 때만 Yahoo 임시값
-  const mi=window.SILVER_MI||{};
+  const mi=shared?{}:(window.SILVER_MI||{});
   const out=window.LME_DATA.map(r=>{const v=silver[r.d]??mi[r.d]??r.y??null;
     return {d:r.d,a:r.a,c:r.c,s:v,sp:silver[r.d]==null&&mi[r.d]==null&&r.y!=null}});
   return out;
@@ -207,12 +219,13 @@ let viewCell=null;   // 선택한 작성일 칸 (null이면 최신 데이터 기
 function weekInfo(){
   const last=data.reduce((m,r)=>r.d>m?r.d:m,"0000-00-00");
   const sh=(x,n)=>{const e=new Date(x);e.setUTCDate(e.getUTCDate()+n);return iso(e)};
-  const newest= !viewCell;
+  const newest= !viewCell || (typeof newestCell==="function" && viewCell===newestCell());
   // 금주(week of): 최신 칸이면 데이터가 있는 마지막 주(월요일 기준, 예: 10/19~), 지난 칸이면 그 칸이 다룬 시세 주(금요일 f)
-  const monday= newest ? mondayOf(last) : sh(T(friOf(viewCell)),-4);
-  const fri= sh(T(monday),4);                        // 금주 금요일 (미래일 수 있음)
-  const cut= newest ? last : fri;                    // 표시 끝일: 최신 칸=데이터 마지막 날
-  return {fri,cut,last,mon:monday,pfri:sh(T(monday),-3),pmon:sh(T(monday),-7),partial:newest&&last<fri};
+  const report=viewCell||(shared&&shared.view().latest);
+  const monday= report ? sh(T(friOf(report)),-4) : mondayOf(last);
+  const fri=sh(T(monday),4);
+  const cut=last<fri?last:fri;
+  return {fri,cut,last,mon:monday,pfri:sh(T(monday),-3),pmon:sh(T(monday),-7),partial:last<fri};
 }const md=s=>s.slice(5).replace("-","/");
 // 증감률 표기: 상승 △ 파랑 / 하락 ▽ 빨강 (퍼센트, 소수 둘째 자리)
 const pctTxt=v=>v==null?"-":v===0?"0.00%":(v>0?"+":"▽ ")+Math.abs(v).toFixed(2)+"%";
@@ -261,6 +274,7 @@ function buildColumns(){
 }
 function render(){
   if(!data.length){document.getElementById("tbl").innerHTML="데이터 없음";return}
+  if(!data.some(r=>r.d<=weekInfo().cut)){document.getElementById("tbl").textContent="선택한 주차의 시세 데이터가 없습니다";return;}
   const {cols,last}=buildColumns();
   const WK=weekInfo();
   document.getElementById("asof").textContent=`${last} (금주 ${md(WK.mon)}~${md(WK.fri)}${WK.partial?" · 진행 중":""} / 전주 ${md(WK.pmon)}~${md(WK.pfri)} 월~금 평균 기준)`;
@@ -296,12 +310,15 @@ function render(){
 
 // ---- 일별 시세 ----
 // 은 종가 직접 입력 (비우면 Yahoo 임시값으로 복귀)
-function setSilver(d,val){
+function setSilver(d,val,typing=false){
+  if(!canEdit())return;
   const box=document.getElementById("dwrap"), top=box.scrollTop;
-  const v=parseFloat(String(val).replace(/,/g,""));
-  if(isNaN(v)) delete silver[d]; else silver[d]=v;
-  localStorage.setItem(SKEY,JSON.stringify(silver));
-  data=mergeData(); render();
+  const clean=String(val).replace(/,/g,"").trim(),v=Number(clean);
+  if(typing)shared.change(()=>{});
+  if(clean&&(!Number.isFinite(v)||v<=0||v>1000000)){if(!typing){alert("올바른 은 시세를 입력해 주세요");renderDaily();}return;}
+  shared.change(p=>{if(!clean)delete p.silver[d];else p.silver[d]=v;});
+  silver=shared.view().silver;
+  data=mergeData(); if(typing)return; render();
   document.getElementById("dwrap").scrollTop=top;
 }
 function renderDaily(){
@@ -331,7 +348,7 @@ function renderDaily(){
           const cur=wavg(r,k), pv=wprev(r,k), chg=(cur!=null&&pv)?(cur-pv)/pv*100:null;
           wa=`<td class="wk">${fmt(cur,2)}${chg==null?"":` <small class="${pctCls(chg)}">${pctTxt(chg)}</small>`}</td>`;
         }
-        if(k==="s") return `<td><input class="sin" value="${v==null?"":v.toFixed(2)}" size="6" onchange="setSilver('${r.d}',this.value)">${star}</td>`+wa;   // 은: 직접 수정 가능
+        if(k==="s") return `<td><input class="sin" ${canEdit()?"":"readonly"} value="${v==null?"":v.toFixed(2)}" size="6" oninput="setSilver('${r.d}',this.value,true)" onchange="setSilver('${r.d}',this.value)">${star}</td>`+wa;   // 은: 직접 수정 가능
         return `<td>${fmt(v,n)}${star}</td>`+wa;
       }).join("")+"</tr>";
     });
@@ -343,20 +360,21 @@ function renderDaily(){
 // ---- 관련 뉴스 (news.js 자동수집 + 직접 추가) ----
 const NKEY="metalNews.v1";
 function renderNews(){
-  const manual=JSON.parse(localStorage.getItem(NKEY)||"[]");
+  const manual=shared?shared.view().news:[];
   const all=[...manual,...(window.NEWS_DATA||[])].sort((a,b)=>String(b.d||"")<String(a.d||"")?-1:1);   // 최신순
   document.getElementById("news").innerHTML=["Silver","Aluminium","Copper"].map(m=>{
     const items=all.filter(n=>n.m===m).slice(0,10);
-    const li=items.length?items.map(n=>`<li>${n.u?`<a href="${n.u}" target="_blank" rel="noopener">${esc(n.t)}</a>`:esc(n.t)}<small>${esc(n.s||"")} ${esc(n.d||"")}</small></li>`).join(""):'<li style="color:#999">뉴스 없음</li>';
+    const li=items.length?items.map(n=>`<li>${n.u&&MetalShared.safeUrl(n.u)?`<a href="${esc(n.u)}" target="_blank" rel="noopener noreferrer">${esc(n.t)}</a>`:esc(n.t)}<small>${esc(n.s||"")} ${esc(n.d||"")}</small></li>`).join(""):'<li style="color:#999">뉴스 없음</li>';
     return `<div class="ncol"><h3>${m}</h3><ul>${li}</ul></div>`;
   }).join("");
 }
 const esc=s=>String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function addNews(){
+  if(!canEdit())return;
   const t=document.getElementById("nt").value.trim(); if(!t) return;
-  const m=JSON.parse(localStorage.getItem(NKEY)||"[]");
-  m.unshift({m:document.getElementById("nm").value,t,u:document.getElementById("nu").value.trim(),s:"직접입력",d:new Date().toISOString().slice(0,10)});
-  localStorage.setItem(NKEY,JSON.stringify(m));
+  const u=document.getElementById("nu").value.trim();
+  if(!MetalShared.safeUrl(u)){alert("http 또는 https 뉴스 링크를 입력해 주세요");return;}
+  shared.change(p=>p.news.unshift({m:document.getElementById("nm").value,t,u,s:"직접입력",d:new Date().toISOString().slice(0,10)}));
   document.getElementById("nt").value="";document.getElementById("nu").value="";renderNews();
 }
 
@@ -436,154 +454,181 @@ function drawChart(s){
 // 새 월요일이 되면 그날 날짜 칸이 자동으로 생기고, 초안은 그 칸에만 들어감 (지난 칸은 건드리지 않음).
 let selWeek=null;
 const KM={Silver:"s",Aluminium:"a",Copper:"c"};
-// 이전 10/20 저장 내용은 10/23 칸에서 이어서 사용한다. 원본 저장 데이터는 유지한다.
-function datedStore(suffix){
-  const store=JSON.parse(localStorage.getItem(RKEY+suffix)||"{}");
-  if(Object.prototype.hasOwnProperty.call(store,"2026-10-20")){
-    if(!Object.prototype.hasOwnProperty.call(store,"2026-10-23")) store["2026-10-23"]=store["2026-10-20"];
-    delete store["2026-10-20"];
-  }
-  return store;
+function canEdit(){return !!shared&&shared.state().canEdit;}
+function reasonStore(){
+  const out={};if(shared)Object.entries(shared.view().reports).forEach(([w,r])=>out[w]={Silver:r.s,Aluminium:r.a,Copper:r.c});return out;
 }
-function reasonStore(){return datedStore(".byDate")}
 const todayStr=()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`};
 // 작성일 -> 그 글이 다루는 시세 주의 금요일
 function friOf(w){
-  const o=(window.COMMENTS||[]).find(x=>x.w===w)||(window.DRAFTS||[]).find(x=>x.w===w); if(o&&o.f) return o.f;
+  const o=origOf(w); if(o&&o.f) return o.f;
   const dow=T(w).getUTCDay(), back=dow>=1&&dow<=4?dow+2:dow===6?1:dow===0?2:0; const x=T(w); x.setUTCDate(x.getUTCDate()-back); return iso(x);
 }
 // 이번 칸 = 최신 시세 데이터가 있는 주의 다음 월요일(=작성일). 초안이 있으면 초안 작성일.
 function newestCell(){
-  const dr=(window.DRAFTS||[]).map(x=>x.w).sort().pop();
-  return dr||todayStr();
+  return shared?shared.view().latest:((window.COMMENTS||[]).map(x=>x.w).sort().pop()||todayStr());
 }
 function weekList(){
-  const set=new Set((window.COMMENTS||[]).map(x=>x.w)); (window.DRAFTS||[]).forEach(x=>set.add(x.w)); Object.keys(reasonStore()).forEach(w=>set.add(w)); set.add(newestCell());
-  return [...set].sort().reverse();
+  return (shared?Object.keys(shared.view().reports):(window.COMMENTS||[]).map(x=>x.w)).sort().reverse();
 }
 function weekLabel(w){const f=friOf(w), m=T(f);m.setUTCDate(m.getUTCDate()-4);return `${md(iso(m))}~${md(f)}`}
-function origOf(w){return (window.COMMENTS||[]).find(x=>x.w===w)}
+function origOf(w){return shared?shared.view().reports[w]:(window.COMMENTS||[]).find(x=>x.w===w)}
 // 확정(잠금) 상태: 엑셀 원본 칸은 기본 확정, 직접 쓴/초안 칸은 '확정' 누르기 전까지 수정 가능
-function lockStore(){return datedStore(".locks")}
+function lockStore(){return shared?shared.view().locks:{}}
 function isLocked(w){const L=lockStore(); if(w in L) return !!L[w]; const o=origOf(w); return !!(o&&o.sheet!=="(웹 작성)")}   // 기본: 엑셀 시트 원본이면 확정 / 웹에서 작성한 칸은 작성 중
-function setLock(w,v){const L=lockStore(); L[w]=v; localStorage.setItem(RKEY+".locks",JSON.stringify(L))}
-function draftStore(){return datedStore(".drafts")}
+function setLock(w,v){if(canEdit())shared.change(p=>{p.locks[w]=v;});}
+function draftStore(){return shared?shared.drafts():{}}
 function confirmWeek(){
+  if(!canEdit())return;
   if(!confirm(`${selWeek} 칸의 변동 사유를 확정할까요? 확정하면 수정할 수 없습니다. ('수정' 버튼으로 다시 풀 수 있습니다)`)) return;
   setLock(selWeek,true); renderReason();
 }
 function unlockWeek(){ setLock(selWeek,false); renderReason(); }
 function renderReason(){
-  const wl=weekList(); if(!selWeek||!wl.includes(selWeek)) selWeek=wl[0];
-  const store=reasonStore(), orig=origOf(selWeek), sv=store[selWeek], locked=isLocked(selWeek);
+  const wl=weekList(); if(!selWeek||!wl.includes(selWeek)) selWeek=newestCell()||wl[0];
+  viewCell=selWeek||null;
+  if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다";document.getElementById("reason").innerHTML="";document.getElementById("draftbox").style.display="none";return;}
+  const store=reasonStore(), orig=origOf(selWeek), sv=store[selWeek], locked=isLocked(selWeek),editable=canEdit()&&!locked;
   document.getElementById("wsel").innerHTML=wl.map(w=>{
     const mark=isLocked(w)?"":(reasonStore()[w]?"✎ ":((window.DRAFTS||[]).some(x=>x.w===w)?"":"○ "));
     return `<button class="${w===selWeek?"on":""}" onclick="selWeek='${w}';viewCell='${w}';render();renderReason()" title="${weekLabel(w)} 시세를 다룬 글">${mark}${w.slice(5).replace("-","/")}</button>`}).join("");
   document.getElementById("wtitle").textContent=`${selWeek} 작성 · 시세 기준 ${weekLabel(selWeek)} 주`;
   const lb=document.getElementById("lockbadge"); lb.textContent=locked?"확정됨":"작성 중"; lb.className="lockbadge "+(locked?"on":"off");
-  document.getElementById("btnConfirm").style.display=locked?"none":""; document.getElementById("btnEdit").style.display=locked?"":"none";
+  document.getElementById("btnConfirm").style.display=editable?"":"none"; document.getElementById("btnEdit").style.display=canEdit()&&locked?"":"none";
   document.getElementById("reason").innerHTML=["Silver","Aluminium","Copper"].map(m=>{
     const k=KM[m], txt=sv&&sv[m]!=null?sv[m]:(orig?orig[k]:"");
-    return `<tr><td class="k">${m}</td><td class="v ${locked?"locked":""}" ${locked?"":"contenteditable"} data-k="${m}">${String(txt||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</td></tr>`}).join("");
+    return `<tr><td class="k">${m}</td><td class="v ${locked?"locked":""}" ${editable?"contenteditable":""} data-k="${m}">${String(txt||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</td></tr>`}).join("");
   document.getElementById("rnote").textContent=orig&&orig.n?orig.n:"";
-  if(!locked) document.querySelectorAll("#reason .v").forEach(el=>el.addEventListener("input",()=>{
-    const st=reasonStore(); const o={};document.querySelectorAll("#reason .v").forEach(e=>o[e.dataset.k]=e.innerText);
-    st[selWeek]=o; localStorage.setItem(RKEY+".byDate",JSON.stringify(st));
-    document.getElementById("rstat").textContent="저장됨 ✓";
+  if(editable) document.querySelectorAll("#reason .v").forEach(el=>el.addEventListener("input",()=>{
+    if(!canEdit())return;
+    shared.change(p=>{document.querySelectorAll("#reason .v").forEach(e=>p.reports[selWeek][KM[e.dataset.k]]=e.innerText);});
+    document.getElementById("rstat").textContent="내 작업본 · 공유 전";
   }));
   document.getElementById("rstat").textContent="";
-  document.querySelector("button[onclick='resetWeek()']").style.display=locked?"none":"";
+  document.querySelector("button[onclick='resetWeek()']").style.display=editable?"":"none";
   // 금주 변동 사유 (가안): 수정 가능 + 임시저장
-  const dr=(window.DRAFTS||[]).find(x=>x.w===selWeek), box=document.getElementById("draftbox");
-  if(dr && !locked){
+  const box=document.getElementById("draftbox");
+  if(editable){
     box.style.display="";
-    document.getElementById("draftmeta").textContent=`${dr.asof} 작성 칸 · 시세 ${weekLabel(dr.w)} 주 기준`;
-    const eh=s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;"); let ds=draftStore()[selWeek]; if(ds&&ds.__v!==(dr.v||dr.asof)) ds=null;   // 가안 파일이 새 버전이면 옛 임시저장본은 무시
-    document.getElementById("draftTbl").innerHTML=["Silver","Aluminium","Copper"].map(m=>`<tr><td class="k" style="background:#6b7a99">${m}</td><td class="v draftv" contenteditable style="height:auto" data-k="${m}">${eh(ds&&ds[m]!=null?ds[m]:dr[KM[m]])}</td></tr>`).join("");
-    document.getElementById("dstat").textContent=ds?"임시저장본 불러옴":"";
+    document.getElementById("draftmeta").textContent=`${selWeek} 개인 가안 · 이 기기에만 저장 · 본문 적용 후 공유 저장 필요`;
+    const ds=draftStore()[selWeek]||{};
+    document.getElementById("draftTbl").innerHTML=["Silver","Aluminium","Copper"].map(m=>`<tr><td class="k" style="background:#6b7a99">${m}</td><td class="v draftv" contenteditable style="height:auto" data-k="${m}">${esc(ds[m]||"")}</td></tr>`).join("");
+    document.querySelectorAll("#draftTbl .v").forEach(e=>e.addEventListener("input",saveDraft));
+    document.getElementById("dstat").textContent="개인 가안은 공유되지 않습니다";
   } else box.style.display="none";
 }
 function readDraftCells(){const o={};document.querySelectorAll("#draftTbl .v").forEach(e=>o[e.dataset.k]=e.innerText.replace(/\n{3,}/g,"\n\n").trim());return o}
 function saveDraft(){   // 임시저장 (위 칸에는 반영하지 않음)
-  const ds=draftStore(); const dd=(window.DRAFTS||[]).find(x=>x.w===selWeek); ds[selWeek]=Object.assign(readDraftCells(),{__v:dd?(dd.v||dd.asof):""}); localStorage.setItem(RKEY+".drafts",JSON.stringify(ds));
+  if(!canEdit())return;
+  const ds=draftStore(); ds[selWeek]=readDraftCells(); shared.saveDrafts(ds);
   document.getElementById("dstat").textContent="임시저장됨 ✓";
 }
 function applyDraft(){  // 가안 -> 위 변동 사유 칸
+  if(!canEdit())return;
   if(isLocked(selWeek)){alert("확정된 칸입니다. '수정'을 눌러 확정을 푼 뒤 업데이트하세요.");return}
   const c=readDraftCells(); if(!c.Silver&&!c.Aluminium&&!c.Copper) return;
   if(/\[[^\]]*\]/.test(c.Silver+c.Aluminium+c.Copper) && !confirm("가안에 [ ] 로 비워 둔 부분이 남아 있습니다. 그대로 업데이트할까요?")) return;
-  const st=reasonStore(); st[selWeek]={Silver:c.Silver,Aluminium:c.Aluminium,Copper:c.Copper};
-  localStorage.setItem(RKEY+".byDate",JSON.stringify(st));
-  const ds=draftStore(); const dd2=(window.DRAFTS||[]).find(x=>x.w===selWeek); ds[selWeek]=Object.assign({},c,{__v:dd2?(dd2.v||dd2.asof):""}); localStorage.setItem(RKEY+".drafts",JSON.stringify(ds));
-  renderReason(); document.getElementById("rstat").textContent="업데이트됨 ✓";
+  shared.change(p=>{Object.keys(c).forEach(m=>p.reports[selWeek][KM[m]]=c[m]);});
+  const ds=draftStore(); ds[selWeek]=c; shared.saveDrafts(ds);
+  renderReason(); document.getElementById("rstat").textContent="본문에 적용됨 · 공유 전";
 }
 function resetDraft(){   // 임시저장본 삭제 -> draft.js 의 최신 가안으로 복귀
-  if(!confirm("이 칸의 가안 임시저장본을 지우고 최신 가안으로 되돌릴까요? (위 변동 사유 칸은 바뀌지 않습니다)")) return;
-  const ds=draftStore(); delete ds[selWeek]; localStorage.setItem(RKEY+".drafts",JSON.stringify(ds));
-  renderReason(); document.getElementById("dstat").textContent="최신 가안으로 되돌림 ✓";
+  if(!canEdit()||!confirm("이 칸의 개인 가안을 비울까요? (본문은 바뀌지 않습니다)")) return;
+  const ds=draftStore(); delete ds[selWeek]; shared.saveDrafts(ds);
+  renderReason(); document.getElementById("dstat").textContent="개인 가안 비움";
 }
 function resetWeek(){
-  if(!confirm("이 칸의 수정 내용을 지우고 원본(엑셀)으로 되돌릴까요?")) return;
-  const st=reasonStore(); delete st[selWeek]; localStorage.setItem(RKEY+".byDate",JSON.stringify(st)); renderReason();
-}// ---- 공유 파일(inputs.json): 사람이 입력한 모든 값을 한 파일로 저장/불러오기 ----
-// 담긴 것: 변동 사유(byDate) · 확정 상태(locks) · 가안 임시저장(drafts) · 은 MI 값(silver) · 직접 추가 뉴스(news)
-let syncHandle=null, lastSaved=null;
-const hasFS=!!(window.showSaveFilePicker&&window.showOpenFilePicker);
-function collectInputs(){
-  return {app:"metal-dashboard",version:1,savedAt:new Date().toISOString(),
-    byDate:reasonStore(),locks:lockStore(),drafts:draftStore(),silver:silver,news:JSON.parse(localStorage.getItem(NKEY)||"[]")};
+  if(!canEdit()||isLocked(selWeek)||!confirm("이 칸을 배포 파일의 원본으로 되돌릴까요? 공유 저장 전까지 다른 사람 화면은 바뀌지 않습니다.")) return;
+  const original=shared.seed().reports[selWeek];
+  shared.change(p=>{if(original)p.reports[selWeek]=original;else ["s","a","c"].forEach(k=>p.reports[selWeek][k]="");});renderReason();
 }
-// 불러온 파일을 내 브라우저 값에 병합: 칸(날짜)별로 같은 칸이 양쪽에 있으면 '파일' 쪽 사용, 내 쪽에만 있는 칸은 유지
+// 백업은 다운로드일 뿐 공용 게시가 아니다.
+function collectInputs(){return shared.backup();}
+function downloadJson(name,o){
+  const a=document.createElement("a"),u=URL.createObjectURL(new Blob([JSON.stringify(o,null,2)],{type:"application/json"}));
+  a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);
+}
+function saveInputs(){downloadJson("metal-inputs-backup.json",collectInputs());syncMsg("백업 다운로드됨 · 공용 저장과 별개입니다");}
+function downloadWork(){const w=shared.storedWork();if(!w){alert("이 브라우저의 보존된 작업본이 없습니다");return;}downloadJson("metal-work-backup.json",{app:"metal-shared-backup",version:1,...w});}
+function exportLegacy(){
+  const read=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))||f;}catch(e){return f;}};
+  downloadJson("metal-legacy-inputs.json",{app:"metal-dashboard",version:1,byDate:read(RKEY+".byDate",{}),locks:read(RKEY+".locks",{}),drafts:read(RKEY+".drafts",{}),silver:read(SKEY,{}),news:read(NKEY,[])});
+}
 function applyInputs(o){
-  if(!o||o.app!=="metal-dashboard") throw new Error("이 대시보드의 공유 파일이 아닙니다");
-  const mg=(a,b)=>Object.assign({},a||{},b||{});
-  localStorage.setItem(RKEY+".byDate",JSON.stringify(mg(reasonStore(),o.byDate)));
-  localStorage.setItem(RKEY+".locks",JSON.stringify(mg(lockStore(),o.locks)));
-  localStorage.setItem(RKEY+".drafts",JSON.stringify(mg(draftStore(),o.drafts)));
-  silver=mg(silver,o.silver); localStorage.setItem(SKEY,JSON.stringify(silver));
-  const oldN=JSON.parse(localStorage.getItem(NKEY)||"[]"), key=n=>n.d+"|"+n.t, seen=new Set(oldN.map(key));
-  localStorage.setItem(NKEY,JSON.stringify([...(o.news||[]).filter(n=>!seen.has(key(n))),...oldN]));
-  data=mergeData(); render(); renderNews(); renderReason();
-}
-function syncMsg(t,cls){const e=document.getElementById("syncstat");e.textContent=t;e.className="syncs "+(cls||"")}
-async function saveInputs(){
-  const json=JSON.stringify(collectInputs(),null,1);
-  try{
-    if(hasFS){
-      if(!syncHandle) syncHandle=await window.showSaveFilePicker({suggestedName:"inputs.json",types:[{description:"JSON",accept:{"application/json":[".json"]}}]});
-      const w=await syncHandle.createWritable(); await w.write(json); await w.close();
-      syncMsg(`저장됨 ✓ ${syncHandle.name} · ${new Date().toLocaleTimeString("ko-KR")}`,"ok");
-    } else {
-      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([json],{type:"application/json"})); a.download="inputs.json"; a.click();
-      syncMsg("inputs.json 다운로드됨 — 공유 폴더에 덮어써 주세요","warn");
+  if(!canEdit())throw new Error("공유 저장소를 연결하거나 로컬 전용 모드에서 가져오세요");
+  let p;
+  if(o&&o.app==="metal-shared-backup"&&o.version===1){
+    if(!shared.state().local&&o.revision!==shared.state().revision)throw new Error("다른 버전의 백업입니다. 전체 덮어쓰기는 막았습니다. 로컬 전용에서 백업을 열고 필요한 문장/값만 최신 공유본에 옮겨 주세요.");
+    p=MetalShared.validate(o.payload);
+  }
+  else if(o&&o.app==="metal-dashboard"&&o.version===1){
+    if(!shared.state().local&&shared.state().revision>0)throw new Error("옛 개인 백업은 로컬 전용에서 확인한 뒤 필요한 내용만 공용본에 옮겨 주세요.");
+    p=JSON.parse(JSON.stringify(shared.view()));
+    for(const [w,r] of Object.entries(o.byDate||{})){
+      if(!MetalShared.isDate(w))throw new Error("잘못된 작성일");
+      const base=p.reports[w]||{f:friOf(w),sheet:"(웹 작성)",s:"",a:"",c:"",n:""};
+      p.reports[w]={...base,s:r.Silver||"",a:r.Aluminium||"",c:r.Copper||""};
     }
-    lastSaved=json;
-  }catch(e){ if(!e||e.name!=="AbortError") syncMsg("저장 실패: "+(e&&e.message),"warn"); }
+    Object.assign(p.locks,o.locks||{});Object.assign(p.silver,o.silver||{});
+    if(o.news)p.news=o.news;
+    p.latest=Object.keys(p.reports).sort().pop()||"";p=MetalShared.validate(p);
+  }else throw new Error("지원하지 않는 백업 파일입니다");
+  if(!confirm(`변동 사유 ${Object.keys(p.reports).length}칸 / 은 시세 ${Object.keys(p.silver).length}일을 내 작업본으로 가져올까요?\n현재 작업본이 바뀝니다. 가안은 개인 저장에만 반영되고, 공유 저장 전에는 게시되지 않습니다.`))return;
+  shared.importPayload(p);
+  if(o.drafts&&typeof o.drafts==="object"&&!Array.isArray(o.drafts)){
+    const clean={};for(const [w,d] of Object.entries(o.drafts)){if(MetalShared.isDate(w)&&d&&typeof d==="object"){clean[w]={};for(const m of ["Silver","Aluminium","Copper"])clean[w][m]=typeof d[m]==="string"?d[m].slice(0,20000):"";}}
+    shared.saveDrafts(clean);renderReason();
+  }
 }
-async function loadInputs(){
-  try{
-    let text;
-    if(hasFS){
-      const [h]=await window.showOpenFilePicker({types:[{description:"JSON",accept:{"application/json":[".json"]}}]});
-      syncHandle=h; text=await (await h.getFile()).text();
-    } else {
-      text=await new Promise((res,rej)=>{const f=document.getElementById("inFile");f.onchange=()=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;if(f.files[0])r.readAsText(f.files[0])};f.value="";f.click()});
-    }
-    const o=JSON.parse(text);
-    applyInputs(o);
-    lastSaved=JSON.stringify(collectInputs());
-    syncMsg(`불러옴 ✓ 변동 사유 ${Object.keys(o.byDate||{}).length}칸 · ${o.savedAt?new Date(o.savedAt).toLocaleString("ko-KR"):""} 저장본`,"ok");
-  }catch(e){ if(!e||e.name!=="AbortError") syncMsg("불러오기 실패: "+(e&&e.message),"warn"); }
-}
-window.addEventListener("beforeunload",e=>{   // 마지막 저장/불러오기 이후 변경이 있으면 닫기 전에 경고
-  if(lastSaved===null) return;
-  const strip=s=>JSON.stringify(JSON.parse(s),(k,v)=>k==="savedAt"?undefined:v);
-  if(strip(JSON.stringify(collectInputs()))!==strip(lastSaved)){e.preventDefault();e.returnValue=""}
+function loadInputs(){if(canEdit()){const f=document.getElementById("inFile");f.value="";f.click();}}
+document.getElementById("inFile").addEventListener("change",async e=>{
+  try{const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024)throw new Error("백업 파일이 너무 큽니다 (3MB 이하)");applyInputs(JSON.parse(await f.text()));}catch(err){alert(err.message);}
 });
-
-
-selWeek=weekList()[0];viewCell=selWeek;
-render();renderReason();renderNews();
+function syncMsg(t,cls){const e=document.getElementById("syncstat");e.textContent=t;e.className="syncs "+(cls||"");}
+function syncStatus(s){
+  syncMsg(s.message,s.online&&!s.dirty?"ok":"warn");
+  document.getElementById("publishBtn").disabled=!s.online||!s.loaded||s.busy||s.local||s.pending;
+  document.getElementById("publishBtn").textContent=s.revision===0?"초기 공유":"공유 저장";
+  document.getElementById("importBtn").disabled=!s.canEdit;
+  document.getElementById("restoreBtn").disabled=!s.canEdit;
+  document.getElementById("newReportBtn").disabled=!s.canEdit;
+  document.getElementById("localBtn").hidden=s.local;
+  document.getElementById("cloudBtn").hidden=!s.local;
+  document.querySelectorAll(".nadd input,.nadd select,.nadd button").forEach(e=>e.disabled=!s.canEdit);
+  document.querySelectorAll(".sin").forEach(e=>e.readOnly=!s.canEdit);
+  if(!s.canEdit)document.querySelectorAll("[contenteditable]").forEach(e=>e.contentEditable="false");
+  document.getElementById("sharedMeta").textContent=`${s.local?"로컬 전용 · 공유 안 됨":s.timestamp?"마지막 공유 "+new Date(s.timestamp).toLocaleString("ko-KR")+" · 버전 "+s.revision:"아직 공용 저장본 없음"} · ${s.local?"공유 꺼짐":!s.configured?"공유 설정 필요":s.live?"실시간 연결됨":"30초 간격 확인 (실시간 연결 대기)"} · 자동 수집 시세는 별도 파일 배포가 필요합니다.`;
+}
+function renderShared(){
+  silver=shared.view().silver;data=mergeData();renderReason();render();renderNews();syncStatus(shared.state());
+}
+async function publishInputs(){
+  if(!confirm("현재 변동 사유·은 시세·확정 상태·직접 추가 뉴스를 링크를 가진 모든 사람에게 공유할까요? 개인 가안은 제외됩니다."))return;
+  try{await shared.publish();}catch(e){alert(e.message);}
+}
+async function refreshShared(){
+  if(shared.state().local){alert("로컬 전용입니다. 공용 보기로 돌아온 뒤 불러오세요");return;}
+  if(shared.state().dirty){
+    const pending=shared.pending();
+    if(!confirm(`${pending?"다른 담당자의 새 저장본이 있습니다. ":""}내 작업본을 보존하고 최신 공유본으로 화면을 바꿀까요?\n필요하면 먼저 백업 다운로드하세요. 버전이 다른 백업은 로컬 전용에서 열고 필요한 내용만 최신본에 옮겨 주세요.`))return;
+    await shared.reload();
+  }else await shared.refresh();
+}
+function addReport(){
+  if(!canEdit())return;
+  const w=prompt("추가할 작성일 (YYYY-MM-DD)",todayStr());if(w===null)return;
+  if(!MetalShared.isDate(w)){alert("YYYY-MM-DD 형식의 날짜를 입력하세요");return;}
+  if(shared.view().reports[w]){selWeek=w;viewCell=w;renderShared();return;}
+  const f=prompt("이 글이 다루는 주의 금요일 (YYYY-MM-DD)",friOf(w));if(f===null)return;
+  const next=JSON.parse(JSON.stringify(shared.view()));next.reports[w]={f,sheet:"(웹 작성)",s:"",a:"",c:"",n:""};next.locks[w]=false;next.latest=Object.keys(next.reports).sort().pop();
+  try{MetalShared.validate(next);selWeek=w;viewCell=w;shared.importPayload(next);}catch(e){alert("기준일은 작성일 이전 7일 이내의 금요일이어야 합니다.");}
+}
+function restoreWork(){try{shared.restore();}catch(e){alert(e.message);}}
+function enterLocal(){if(shared.state().dirty){alert("작업본을 백업하고 최신 내용을 불러온 뒤 전환해 주세요");return;}if(confirm("로컬 전용에서는 변경 내용이 다른 사람에게 공유되지 않습니다. 전환할까요?"))shared.useLocal();}
+async function returnShared(){if(shared.state().dirty&&!confirm("로컬 작업본을 보존하고 공용 보기로 돌아갈까요?"))return;await shared.useShared();}
+window.addEventListener("beforeunload",e=>{if(shared&&shared.state().dirty){e.preventDefault();e.returnValue="";}});
+shared=MetalShared.create({seed:MetalShared.fromFiles(window.COMMENTS,window.SILVER_MI),config:window.METAL_SHARED_CONFIG,onStatus:syncStatus,onRender:renderShared});
+renderShared();shared.init();
 </script>
 </body>
 </html>
