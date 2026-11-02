@@ -1,4 +1,4 @@
-﻿﻿# Metal 시황 데이터 수집: Westmetall 시세/재고 + Yahoo 은 + Google News RSS
+﻿# Metal 시황 데이터 수집: Westmetall 시세/재고 + Yahoo 은 + Google News RSS
 # 사용: powershell -File fetch_lme.ps1 [-Years 10]
 param([ValidateRange(1,50)][int]$Years = 5)
 
