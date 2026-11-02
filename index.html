@@ -28,10 +28,19 @@
   .wsel{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
   .wsel button{margin:0;padding:5px 12px;border-radius:16px;font-size:12px;background:#eef1f7;border:1px solid var(--line);color:var(--navy);font-weight:700}
   .wsel button.on{background:var(--orange);color:#fff;border-color:var(--orange);box-shadow:0 3px 8px rgba(255,106,0,.3)}
-  .syncbar{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:14px;font-size:12px}
+  .syncbar{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;font-size:12px}
   .syncbar button{margin:0;padding:5px 14px;font-weight:700}
-  .syncl{color:var(--mute);font-weight:700} .syncs{color:var(--mute);margin-left:6px}
-  .syncs.ok{color:#1e8449} .syncs.warn{color:#c46a00}
+  .syncs{color:#596579;max-width:520px;line-height:1.5}
+  .syncs.ok{color:#1e8449} .syncs.warn{color:#935000}
+  #publishBtn{background:var(--navy);color:#fff;border-color:var(--navy)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button:focus-visible,summary:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+  details.sync-tools{margin:0;padding:0;background:none;box-shadow:none;position:relative;border-radius:0}
+  .sync-tools summary{padding:6px 4px;font-size:12px}
+  .sync-menu{position:absolute;right:0;top:32px;z-index:5;width:min(420px,calc(100vw - 40px));padding:16px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(20,33,61,.12)}
+  .sync-actions{display:flex;flex-wrap:wrap;gap:8px}
+  .sync-menu .note{line-height:1.6;margin-bottom:0}
+  @media(max-width:600px){.syncbar .syncs{order:4;flex-basis:100%;text-align:right}.wrapx{padding:0 12px}}
   .lockbar{display:flex;align-items:center;gap:6px;margin:0 0 8px}
   .lockbar button{margin:0;padding:5px 16px;font-weight:700}
   #btnConfirm{background:#14213d;color:#fff;border-color:#14213d} #btnConfirm:hover{background:#22345f;color:#fff}
@@ -93,22 +102,29 @@
 <div class="top"><h1>주요 <em>Metal</em> 시황 대시보드</h1><div class="asof">기준일 <b id="asof"></b></div></div>
 <div class="wrapx">
 <div class="syncbar">
-  <span class="syncl">공용 입력</span>
-  <button id="publishBtn" disabled onclick="publishInputs()">공유 저장</button>
-  <button onclick="refreshShared()">최신 내용 불러오기</button>
-  <button onclick="saveInputs()">백업 다운로드</button>
-  <button onclick="exportLegacy()">기존 개인값 백업</button>
-  <button id="importBtn" disabled onclick="loadInputs()">백업 가져오기</button>
-  <button id="restoreBtn" disabled onclick="restoreWork()">작업본 복원</button>
-  <button id="newReportBtn" disabled onclick="addReport()">작성일 추가</button>
-  <button onclick="downloadWork()">보존 작업본 백업</button>
-  <button id="localBtn" onclick="enterLocal()">로컬 전용</button>
-  <button id="cloudBtn" hidden onclick="returnShared()">공용 보기로</button>
-  <input type="file" id="inFile" accept=".json,application/json" style="display:none">
-  <span id="syncstat" class="syncs"></span>
+  <span id="syncstat" class="syncs" role="status" aria-live="polite"></span>
+  <button id="conflictBtn" hidden onclick="refreshShared()">새 저장본 확인</button>
+  <button id="publishBtn" disabled onclick="publishInputs()" title="저장하면 링크를 가진 모든 사람에게 반영됩니다">저장</button>
+  <details class="sync-tools">
+    <summary>더보기</summary>
+    <div class="sync-menu">
+      <div class="sync-actions">
+        <button onclick="refreshShared()">최신 내용 불러오기</button>
+        <button id="newReportBtn" disabled onclick="addReport()">작성일 추가</button>
+        <button onclick="saveInputs()">백업 다운로드</button>
+        <button id="importBtn" disabled onclick="loadInputs()">백업 가져오기</button>
+        <button id="restoreBtn" disabled onclick="restoreWork()">작업본 복원</button>
+        <button onclick="downloadWork()">보존 작업본 백업</button>
+        <button onclick="exportLegacy()">기존 개인값 백업</button>
+        <button id="localBtn" onclick="enterLocal()">로컬 전용</button>
+        <button id="cloudBtn" hidden onclick="returnShared()">공용 보기로</button>
+      </div>
+      <p class="note" id="sharedMeta">공유 연결 확인 중</p>
+      <p class="note">누구나 수정할 수 있습니다. 저장 전에는 내 작업본이며, 저장하면 다른 사람 화면에도 반영됩니다. 개인 가안은 공유되지 않습니다.</p>
+    </div>
+  </details>
+  <input type="file" id="inFile" accept=".json,application/json" hidden>
 </div>
-<p class="note" id="sharedMeta">공유 연결 확인 중 · 자동 수집 시세는 별도 파일 배포가 필요합니다.</p>
-<p class="note">공개 공동 편집: 링크를 가진 누구나 수정·공유 저장할 수 있습니다. 저장 전에는 내 작업본이며, 저장 후 다른 화면에 자동 반영됩니다.</p>
 <div class="main"><div class="left panel">
 <h2>주요 Metal 시세</h2>
 <div class="meta">단위: Silver $/toz, Aluminium·Copper $/톤 ｜ 출처: Al·Cu 한국비철금속협회 LME 현물 / Silver MI 시황 (<span style="color:#e5384f">*</span> = Yahoo 선물 종가 임시값)</div>
@@ -123,11 +139,7 @@
   <span class="note" style="margin:0 0 0 6px">확정하면 변동 사유 칸이 잠기고, '수정'을 누르면 다시 풀립니다.</span>
 </div>
 <table class="reason" id="reason"></table>
-<details id="draftbox" open style="display:none;margin-top:12px"><summary><b>금주 변동 사유 (가안)</b> <span id="draftmeta" style="font-weight:400;font-size:12px;color:var(--mute)"></span></summary>
-  <table class="reason" id="draftTbl" style="margin-top:8px"></table>
-  <button onclick="saveDraft()">저장</button> <button onclick="applyDraft()">업데이트</button> <span id="dstat" style="color:#2e9e5b;font-size:12px"></span>
-  <span class="note">가안은 직접 고칠 수 있습니다. [ ] 부분을 채운 뒤 '저장'(임시저장) → '업데이트'(위 칸에 반영)</span>
-</details><div class="note"><span id="rnote"></span><br><button onclick="resetWeek()" style="padding:2px 10px;font-size:11px">엑셀 원본으로 되돌리기</button> <span id="rstat" style="color:#2e9e5b"></span></div>
+<div class="note">위 변동 사유 칸에 바로 붙여넣고 상단 ‘저장’을 누르세요. <span id="rstat" role="status"></span><br><span id="rnote"></span><br><button onclick="resetWeek()" style="padding:2px 10px;font-size:11px">엑셀 원본으로 되돌리기</button></div>
 
 </div>
 </div>
@@ -137,7 +149,7 @@
   <div style="text-align:right;margin-bottom:6px;font-size:12px">표시 기간
     <select id="dsel" onchange="renderDaily()"><option value="1">최근 1개월</option><option value="2" selected>최근 2개월</option><option value="3">최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option><option value="all">전체</option></select></div>
   <div class="dwrap" id="dwrap"><table id="daily"></table></div>
-  <div class="note"><b>Silver 칸은 직접 수정할 수 있습니다.</b> MI 값을 입력하고 Enter/탭을 누르면 저장되고 Weekly·월 평균이 다시 계산됩니다. 칸을 비우면 Yahoo 임시값(<span style="color:#e5384f">*</span>)으로 돌아갑니다.<br>Weekly Avg 옆 %는 직전 주(월~금) 평균 대비 변동률 (<span class="up">+ 상승</span> / <span class="dn">▽ 하락</span>)</div>
+  <div class="note"><b>Silver 칸은 직접 수정할 수 있습니다.</b> MI 값을 입력하고 Enter/탭을 누르면 Weekly·월 평균이 다시 계산됩니다. 다른 사람에게 반영하려면 상단 ‘저장’을 누르세요. 칸을 비우면 Yahoo 임시값(<span style="color:#e5384f">*</span>)으로 돌아갑니다.<br>Weekly Avg 옆 %는 직전 주(월~금) 평균 대비 변동률 (<span class="up">+ 상승</span> / <span class="dn">▽ 하락</span>)</div>
 </div>
 
 <div class="ana panel">
@@ -219,10 +231,8 @@ let viewCell=null;   // 선택한 작성일 칸 (null이면 최신 데이터 기
 function weekInfo(){
   const last=data.reduce((m,r)=>r.d>m?r.d:m,"0000-00-00");
   const sh=(x,n)=>{const e=new Date(x);e.setUTCDate(e.getUTCDate()+n);return iso(e)};
-  const newest= !viewCell || (typeof newestCell==="function" && viewCell===newestCell());
-  // 금주(week of): 최신 칸이면 데이터가 있는 마지막 주(월요일 기준, 예: 10/19~), 지난 칸이면 그 칸이 다룬 시세 주(금요일 f)
-  const report=viewCell||(shared&&shared.view().latest);
-  const monday= report ? sh(T(friOf(report)),-4) : mondayOf(last);
+  // 최신 시세는 수집 자료 기준, 작성일을 직접 선택하면 해당 글의 대상 주차 기준.
+  const monday=viewCell ? sh(T(friOf(viewCell)),-4) : mondayOf(last);
   const fri=sh(T(monday),4);
   const cut=last<fri?last:fri;
   return {fri,cut,last,mon:monday,pfri:sh(T(monday),-3),pmon:sh(T(monday),-7),partial:last<fri};
@@ -485,13 +495,15 @@ function confirmWeek(){
 }
 function unlockWeek(){ setLock(selWeek,false); renderReason(); }
 function renderReason(){
-  const wl=weekList(); if(!selWeek||!wl.includes(selWeek)) selWeek=newestCell()||wl[0];
-  viewCell=selWeek||null;
-  if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다";document.getElementById("reason").innerHTML="";document.getElementById("draftbox").style.display="none";return;}
+  const wl=weekList();
+  if(viewCell&&!wl.includes(viewCell))viewCell=null;
+  if(!viewCell)selWeek=newestCell()||wl[0];
+  else selWeek=viewCell;
+  if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다. 더보기에서 작성일을 추가하세요.";document.getElementById("reason").innerHTML="";document.getElementById("btnConfirm").style.display="none";document.getElementById("btnEdit").style.display="none";return;}
   const store=reasonStore(), orig=origOf(selWeek), sv=store[selWeek], locked=isLocked(selWeek),editable=canEdit()&&!locked;
-  document.getElementById("wsel").innerHTML=wl.map(w=>{
-    const mark=isLocked(w)?"":(reasonStore()[w]?"✎ ":((window.DRAFTS||[]).some(x=>x.w===w)?"":"○ "));
-    return `<button class="${w===selWeek?"on":""}" onclick="selWeek='${w}';viewCell='${w}';render();renderReason()" title="${weekLabel(w)} 시세를 다룬 글">${mark}${w.slice(5).replace("-","/")}</button>`}).join("");
+  document.getElementById("wsel").innerHTML=`<button class="${!viewCell?"on":""}" onclick="viewCell=null;renderReason();render()" title="최신 수집 시세와 최근 작성한 사유">최신 시세</button>`+wl.map(w=>{
+    const mark=isLocked(w)?"":"✎ ";
+    return `<button class="${w===viewCell?"on":""}" onclick="selWeek='${w}';viewCell='${w}';render();renderReason()" title="${weekLabel(w)} 시세를 다룬 글">${mark}${w.slice(5).replace("-","/")}</button>`}).join("");
   document.getElementById("wtitle").textContent=`${selWeek} 작성 · 시세 기준 ${weekLabel(selWeek)} 주`;
   const lb=document.getElementById("lockbadge"); lb.textContent=locked?"확정됨":"작성 중"; lb.className="lockbadge "+(locked?"on":"off");
   document.getElementById("btnConfirm").style.display=editable?"":"none"; document.getElementById("btnEdit").style.display=canEdit()&&locked?"":"none";
@@ -499,43 +511,28 @@ function renderReason(){
     const k=KM[m], txt=sv&&sv[m]!=null?sv[m]:(orig?orig[k]:"");
     return `<tr><td class="k">${m}</td><td class="v ${locked?"locked":""}" ${editable?"contenteditable":""} data-k="${m}">${String(txt||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</td></tr>`}).join("");
   document.getElementById("rnote").textContent=orig&&orig.n?orig.n:"";
-  if(editable) document.querySelectorAll("#reason .v").forEach(el=>el.addEventListener("input",()=>{
-    if(!canEdit())return;
-    shared.change(p=>{document.querySelectorAll("#reason .v").forEach(e=>p.reports[selWeek][KM[e.dataset.k]]=e.innerText);});
-    document.getElementById("rstat").textContent="내 작업본 · 공유 전";
-  }));
+  if(editable) document.querySelectorAll("#reason .v").forEach(el=>{
+    el.addEventListener("paste",e=>{
+      e.preventDefault();
+      if(!canEdit()||!e.clipboardData)return;
+      const selection=window.getSelection();
+      if(!selection.rangeCount)return;
+      const range=selection.getRangeAt(0);
+      if(!el.contains(range.commonAncestorContainer))return;
+      const text=document.createTextNode(e.clipboardData.getData("text/plain").replace(/\r\n?/g,"\n"));
+      range.deleteContents();range.insertNode(text);range.setStartAfter(text);range.collapse(true);
+      selection.removeAllRanges();selection.addRange(range);
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    el.addEventListener("input",()=>{
+      if(!canEdit())return;
+      shared.change(p=>{document.querySelectorAll("#reason .v").forEach(e=>p.reports[selWeek][KM[e.dataset.k]]=e.innerText);});
+      document.getElementById("rstat").textContent="내 작업본 · 저장 전";
+    });
+  });
   document.getElementById("rstat").textContent="";
   document.querySelector("button[onclick='resetWeek()']").style.display=editable?"":"none";
-  // 금주 변동 사유 (가안): 수정 가능 + 임시저장
-  const box=document.getElementById("draftbox");
-  if(editable){
-    box.style.display="";
-    document.getElementById("draftmeta").textContent=`${selWeek} 개인 가안 · 이 기기에만 저장 · 본문 적용 후 공유 저장 필요`;
-    const ds=draftStore()[selWeek]||{};
-    document.getElementById("draftTbl").innerHTML=["Silver","Aluminium","Copper"].map(m=>`<tr><td class="k" style="background:#6b7a99">${m}</td><td class="v draftv" contenteditable style="height:auto" data-k="${m}">${esc(ds[m]||"")}</td></tr>`).join("");
-    document.querySelectorAll("#draftTbl .v").forEach(e=>e.addEventListener("input",saveDraft));
-    document.getElementById("dstat").textContent="개인 가안은 공유되지 않습니다";
-  } else box.style.display="none";
-}
-function readDraftCells(){const o={};document.querySelectorAll("#draftTbl .v").forEach(e=>o[e.dataset.k]=e.innerText.replace(/\n{3,}/g,"\n\n").trim());return o}
-function saveDraft(){   // 임시저장 (위 칸에는 반영하지 않음)
-  if(!canEdit())return;
-  const ds=draftStore(); ds[selWeek]=readDraftCells(); shared.saveDrafts(ds);
-  document.getElementById("dstat").textContent="임시저장됨 ✓";
-}
-function applyDraft(){  // 가안 -> 위 변동 사유 칸
-  if(!canEdit())return;
-  if(isLocked(selWeek)){alert("확정된 칸입니다. '수정'을 눌러 확정을 푼 뒤 업데이트하세요.");return}
-  const c=readDraftCells(); if(!c.Silver&&!c.Aluminium&&!c.Copper) return;
-  if(/\[[^\]]*\]/.test(c.Silver+c.Aluminium+c.Copper) && !confirm("가안에 [ ] 로 비워 둔 부분이 남아 있습니다. 그대로 업데이트할까요?")) return;
-  shared.change(p=>{Object.keys(c).forEach(m=>p.reports[selWeek][KM[m]]=c[m]);});
-  const ds=draftStore(); ds[selWeek]=c; shared.saveDrafts(ds);
-  renderReason(); document.getElementById("rstat").textContent="본문에 적용됨 · 공유 전";
-}
-function resetDraft(){   // 임시저장본 삭제 -> draft.js 의 최신 가안으로 복귀
-  if(!canEdit()||!confirm("이 칸의 개인 가안을 비울까요? (본문은 바뀌지 않습니다)")) return;
-  const ds=draftStore(); delete ds[selWeek]; shared.saveDrafts(ds);
-  renderReason(); document.getElementById("dstat").textContent="개인 가안 비움";
+  // 기존 개인 가안은 저장소/백업에 남기되 편집은 본문 한 곳에서만 한다.
 }
 function resetWeek(){
   if(!canEdit()||isLocked(selWeek)||!confirm("이 칸을 배포 파일의 원본으로 되돌릴까요? 공유 저장 전까지 다른 사람 화면은 바뀌지 않습니다.")) return;
@@ -588,7 +585,8 @@ function syncMsg(t,cls){const e=document.getElementById("syncstat");e.textConten
 function syncStatus(s){
   syncMsg(s.message,s.online&&!s.dirty?"ok":"warn");
   document.getElementById("publishBtn").disabled=!s.online||!s.loaded||s.busy||s.local||s.pending;
-  document.getElementById("publishBtn").textContent=s.revision===0?"초기 공유":"공유 저장";
+  document.getElementById("publishBtn").textContent=s.busy?"저장 중…":"저장";
+  document.getElementById("conflictBtn").hidden=!s.pending;
   document.getElementById("importBtn").disabled=!s.canEdit;
   document.getElementById("restoreBtn").disabled=!s.canEdit;
   document.getElementById("newReportBtn").disabled=!s.canEdit;
