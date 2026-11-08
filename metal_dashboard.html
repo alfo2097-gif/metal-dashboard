@@ -169,7 +169,7 @@
 <script src="shared-store.js"></script>
 <script>
 const KEY="metalData.v1", RKEY="metalReason.v1";
-const METALS=[["Silver ($/toz)","s",2],["Aluminium ($/톤)","a",0],["Copper ($/톤)","c",0]];
+const METALS=[["Silver ($/toz)","s",2],["Aluminium ($/톤)","a",1],["Copper ($/톤)","c",1]];
 
 // ---- 샘플 백데이터 (MI 데이터로 대체 예정) ----
 function sampleData(){
@@ -337,13 +337,13 @@ function renderDaily(){
         let wa=`<td class="wk"></td>`;
         if(isWE){
           const cur=wavg(r,k), pv=wprev(r,k), chg=(cur!=null&&pv)?(cur-pv)/pv*100:null;
-          wa=`<td class="wk">${fmt(cur,2)}${chg==null?"":` <small class="${pctCls(chg)}">${pctTxt(chg)}</small>`}</td>`;
+          wa=`<td class="wk">${fmt(cur,n)}${chg==null?"":` <small class="${pctCls(chg)}">${pctTxt(chg)}</small>`}</td>`;
         }
         if(k==="s") return `<td><input class="sin" ${canEdit()?"":"readonly"} value="${v==null?"":v.toFixed(2)}" size="6" oninput="setSilver('${r.d}',this.value,true)" onchange="setSilver('${r.d}',this.value)">${star}</td>`+wa;   // 은: 직접 수정 가능
         return `<td>${fmt(v,n)}${star}</td>`+wa;
       }).join("")+"</tr>";
     });
-    body+=`<tr class="mrow"><td>${Number(m.slice(5))}월 평균</td>`+METALS.map(([,k,n])=>`<td>${fmt(mavg(m,k),k==="s"?2:2)}</td><td class="wk"></td>`).join("")+"</tr>";
+    body+=`<tr class="mrow"><td>${Number(m.slice(5))}월 평균</td>`+METALS.map(([,k,n])=>`<td>${fmt(mavg(m,k),n)}</td><td class="wk"></td>`).join("")+"</tr>";
   });
   document.getElementById("daily").innerHTML=h+body+"</tbody>";
   const box=document.getElementById("dwrap"); box.scrollTop=box.scrollHeight;
@@ -405,7 +405,7 @@ function renderAnalysis(){
   const ss=ok.slice(-250).map(x=>x.s), mn=Math.min(...ss), mx=Math.max(...ss);
   const dirTxt=sc==null||pc==null?"-":sc<0&&pc>0?"재고 감소 + 가격 상승":sc>0&&pc<0?"재고 증가 + 가격 하락":sc<0?"재고 감소 / 가격 약세":"재고 증가 / 가격 강세";
   document.getElementById("cards").innerHTML=`
-   <div class="card"><h4>금주 평균 Cash (${md(W.mon)}~${md(W.fri)}${part})</h4><b>${f0(cP)} $/톤</b><br>전주 평균 ${f0(pP)}<br>전주 대비 <b class="${cls(pc)}">${sg(pc)}</b></div>
+   <div class="card"><h4>금주 평균 Cash (${md(W.mon)}~${md(W.fri)}${part})</h4><b>${fmt(cP,1)} $/톤</b><br>전주 평균 ${fmt(pP,1)}<br>전주 대비 <b class="${cls(pc)}">${sg(pc)}</b></div>
    <div class="card"><h4>금주 평균 LME 재고 (${md(W.mon)}~${md(W.fri)}${part})</h4><b>${f0(cS)} t</b><br>전주 평균 ${f0(pS)} t<br>전주 대비 <b class="${cls(sc)}">${sg(sc)}</b></div>
    <div class="card"><h4>재고 52주 범위</h4>최저 ${f0(mn)} t<br>최고 ${f0(mx)} t<br>52주 변동폭 <b class="${mn<mx?"dn":""}">${mx?pctInt((mn-mx)/mx*100):"-"}</b></div>
    <div class="card"><h4>가격·재고 방향</h4>${dirTxt}</div>`;
@@ -415,7 +415,7 @@ function drawChart(s){
   const W=760,H=320,L=60,R=60,T=16,B=28;
   const X=i=>L+(W-L-R)*i/(s.length-1);
   const rng=(arr)=>{const mn=Math.min(...arr),mx=Math.max(...arr),pd=(mx-mn)*0.08||1;return [mn-pd,mx+pd]};
-  const noStk=LM[selMetal].noStock, dp=noStk?1:0;
+  const noStk=LM[selMetal].noStock, dp=1;
   const ps=s.map(x=>x.p).filter(v=>v!=null), [pl,ph]=rng(ps), [sl,sh]=noStk?[0,1]:rng(s.map(x=>x.s));
   const YP=v=>T+(H-T-B)*(1-(v-pl)/(ph-pl)), YS=v=>T+(H-T-B)*(1-(v-sl)/(sh-sl));
   let g="";
