@@ -120,7 +120,7 @@
   <span class="note" style="margin:0 0 0 6px">확정하면 변동 사유 칸이 잠기고, '수정'을 누르면 다시 풀립니다.</span>
 </div>
 <table class="reason" id="reason"></table>
-<div class="note">위 변동 사유 칸에 바로 붙여넣고 상단 ‘저장’을 누르세요. <span id="rstat" role="status"></span><br><span id="rnote"></span><br><button onclick="resetWeek()" style="padding:2px 10px;font-size:11px">엑셀 원본으로 되돌리기</button></div>
+<div class="note"><span id="rstat" role="status"></span><button onclick="resetWeek()" style="padding:2px 10px;font-size:11px">엑셀 원본으로 되돌리기</button></div>
 
 </div>
 </div>
@@ -435,7 +435,7 @@ function drawChart(s){
     if(noStk) q("#hc2").setAttribute("display","none"); else {q("#hc2").removeAttribute("display");q("#hc2").setAttribute("cx",X(i));q("#hc2").setAttribute("cy",YS(d.s));}
     if(d.p!=null){q("#hc1").removeAttribute("display");q("#hc1").setAttribute("cx",X(i));q("#hc1").setAttribute("cy",YP(d.p))}else q("#hc1").setAttribute("display","none");
     q("#hb").setAttribute("x",bx);q("#hb").setAttribute("y",T+4);
-    [["#ht0",d.d],["#ht1",(noStk?"종가 ":"Cash ")+(d.p!=null?d.p.toLocaleString("en-US")+" $":"-")],["#ht2",noStk?"":"재고 "+d.s.toLocaleString("en-US")+" t"]].forEach(([id,t],j)=>{const e2=q(id);e2.textContent=t;e2.setAttribute("x",bx+8);e2.setAttribute("y",T+20+j*14)})};
+    [["#ht0",d.d],["#ht1",(noStk?"종가 ":"Cash ")+(d.p!=null?fmt(d.p,noStk?2:1)+" $":"-")],["#ht2",noStk?"":"재고 "+d.s.toLocaleString("en-US")+" t"]].forEach(([id,t],j)=>{const e2=q(id);e2.textContent=t;e2.setAttribute("x",bx+8);e2.setAttribute("y",T+20+j*14)})};
   hr.onmouseleave=()=>hg.setAttribute("display","none");
   document.getElementById("chartnote").innerHTML=noStk?`Silver: Yahoo SI=F 선물 종가(임시, <span style="color:#c00">*</span>) · MI 값 붙여넣기 시 교체 · 마우스를 올리면 일자별 값 표시`:`출처: Westmetall (LME Cash-Settlement / LME stock) · 마우스를 올리면 일자별 값 표시`;
 }
@@ -491,7 +491,6 @@ function renderReason(){
   document.getElementById("reason").innerHTML=["Silver","Aluminium","Copper"].map(m=>{
     const k=KM[m], txt=sv&&sv[m]!=null?sv[m]:(orig?orig[k]:"");
     return `<tr><td class="k">${m}</td><td class="v ${locked?"locked":""}" ${editable?"contenteditable":""} data-k="${m}">${String(txt||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</td></tr>`}).join("");
-  document.getElementById("rnote").textContent=orig&&orig.n?orig.n:"";
   if(editable) document.querySelectorAll("#reason .v").forEach(el=>{
     el.addEventListener("paste",e=>{
       e.preventDefault();
