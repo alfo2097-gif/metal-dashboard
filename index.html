@@ -444,6 +444,7 @@ function drawChart(s){
 // 칸(w) = 작성일(월요일). 칸마다 "어느 시세 주를 다룬 글인지(f=직전 금요일)"가 따로 있음.
 // 새 월요일이 되면 그날 날짜 칸이 자동으로 생기고, 초안은 그 칸에만 들어감 (지난 칸은 건드리지 않음).
 let selWeek=null;
+let reportSelected=false;
 const KM={Silver:"s",Aluminium:"a",Copper:"c"};
 function canEdit(){return !!shared&&shared.state().canEdit;}
 function reasonStore(){
@@ -477,14 +478,13 @@ function confirmWeek(){
 function unlockWeek(){ setLock(selWeek,false); renderReason(); }
 function renderReason(){
   const wl=weekList();
-  if(viewCell&&!wl.includes(viewCell))viewCell=null;
-  if(!viewCell)selWeek=newestCell()||wl[0];
-  else selWeek=viewCell;
+  if(!reportSelected||!wl.includes(viewCell))viewCell=wl[0]||null;
+  selWeek=viewCell;
   if(!selWeek){document.getElementById("wsel").textContent="공유된 작성 칸이 없습니다.";document.getElementById("reason").innerHTML="";document.getElementById("btnConfirm").style.display="none";document.getElementById("btnEdit").style.display="none";return;}
   const store=reasonStore(), orig=origOf(selWeek), sv=store[selWeek], locked=isLocked(selWeek),editable=canEdit()&&!locked;
-  document.getElementById("wsel").innerHTML=`<button class="${!viewCell?"on":""}" onclick="viewCell=null;renderReason();render()" title="최신 수집 시세와 최근 작성한 사유">최신 시세</button>`+wl.map(w=>{
+  document.getElementById("wsel").innerHTML=wl.map(w=>{
     const mark=isLocked(w)?"":"✎ ";
-    return `<button class="${w===viewCell?"on":""}" onclick="selWeek='${w}';viewCell='${w}';render();renderReason()" title="${weekLabel(w)} 시세를 다룬 글">${mark}${w.slice(5).replace("-","/")}</button>`}).join("");
+    return `<button class="${w===viewCell?"on":""}" onclick="reportSelected=true;selWeek='${w}';viewCell='${w}';render();renderReason()" title="${weekLabel(w)} 시세를 다룬 글">${mark}${w.slice(5).replace("-","/")}</button>`}).join("");
   document.getElementById("wtitle").textContent=`${selWeek} 작성 · 시세 기준 ${weekLabel(selWeek)} 주`;
   const lb=document.getElementById("lockbadge"); lb.textContent=locked?"확정됨":"작성 중"; lb.className="lockbadge "+(locked?"on":"off");
   document.getElementById("btnConfirm").style.display=editable?"":"none"; document.getElementById("btnEdit").style.display=canEdit()&&locked?"":"none";
